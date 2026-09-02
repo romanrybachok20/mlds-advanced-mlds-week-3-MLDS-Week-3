@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-
+from collections import Counter
 from src.task1_text_cleaning import clean_and_tokenize
 from src.task2_stemm_lemma import stem_and_lemmatize
 from src.task5_word2vec import train_word2vec
@@ -48,37 +48,76 @@ def analyze_documents(
         9
     """
     # Input validation
-    ...
+    if not isinstance(documents,list):
+        raise TypeError("Documents must be a list")
+    if not all(isinstance(doc, str) for doc in documents):
+        raise TypeError("All documents must be strings")
+    if not documents:
+        raise ValueError("Documents cannot be empty")
+    if len(documents) < 2:
+        raise ValueError("At least 2 documents are required")
+    if vector_method not in ["bow", "tfidf"]:
+        raise ValueError("vector_method must be 'bow' or 'tfidf'")
+    if not isinstance(ngram_range, tuple) or len(ngram_range) != 2 or ngram_range[0] > ngram_range[1]:
+        raise ValueError("Invalid ngram_range")
 
     # Step 1: Preprocess documents
     preprocessed_docs = []
     all_tokens = []
     
-    ...
+    for doc in documents:
+        tokens = clean_and_tokenize(doc)
+        stem_lemma_result = stem_and_lemmatize(tokens)
+        if use_lemmatization:
+            final_tokens = stem_lemma_result['lemmatized']
+        else:
+            final_tokens = stem_lemma_result['stemmed']
+        preprocessed_docs.append(final_tokens)
+        all_tokens.extend(final_tokens)
+    
     
     # Calculate preprocessing statistics
-    ...
+    total_tokens = len(all_tokens)
+    unique_tokens = len(set(all_tokens)) 
+    avg_doc_length = total_tokens / len(documents)
     
     # Step 2: Vectorization
     # Reconstruct text from processed tokens for vectorization
-    ...
+    processed_texts = [" ".join(doc) for doc in preprocessed_docs]
+    if vector_method == "bow":
+        vectorizer = CountVectorizer(ngram_range=ngram_range)
+    else:
+        vectorizer = TfidfVectorizer(ngram_range=ngram_range)
+    feature_matrix = vectorizer.fit_transform(processed_texts)
+    feature_names = vectorizer.get_feature_names_out()
+    feature_df = pd.DataFrame(data=feature_matrix.toarray(), columns=feature_names)
     
     # Step 3: Word embeddings
     # Filter out empty documents for Word2Vec
-    ...
+    valid_docs = [doc for doc in preprocessed_docs if doc]
+    word2vec_model = train_word2vec(valid_docs)
+    vocabulary_size = len(word2vec_model.wv)
+    vector_size = word2vec_model.vector_size
     
     # Step 4: N-gram analysis
     # Combine all documents for n-gram analysis
-    ...
+    combined_text = " ".join(processed_texts)
+    all_bigrams = generate_ngrams(combined_text, 2)
+    all_trigrams = generate_ngrams(combined_text, 3)
+    bigram_counts = count_ngrams(all_bigrams)
+    trigram_counts = count_ngrams(all_trigrams)
     
     # Sort by frequency
-    ...
+    top_bigrams = Counter(bigram_counts).most_common(5)
+    top_trigrams = Counter(trigram_counts).most_common(5)
     
     # Calculate bigram diversity
-    ...
+    bigram_diversity = len(bigram_counts) / len(all_bigrams) if all_bigrams else 0.0
     
     # Step 5: Document similarity
-    ...
+    similarity_matrix = cosine_similarity(feature_df)
+    doc_labels = [f"doc_{i}" for i in range(len(documents))]
+    similarity_df = pd.DataFrame(similarity_matrix, index=doc_labels, columns=doc_labels)
     
     # Compile results
     results = {
@@ -136,16 +175,19 @@ def find_similar_documents(
         >>> find_similar_documents(0, sim_matrix, top_n=1)
         [(1, 0.8)]
     """
-   ...
+    if not isinstance(similarity_matrix, pd.DataFrame):
+        raise TypeError("similarity_matrix must be a pandas DataFrame")
+    if doc_index < 0 or doc_index >= len(similarity_matrix):
+        raise ValueError(f"doc_index must be between 0 and {len(similarity_matrix)-1}")
     
     # Get similarity scores for the document (excluding itself)
-    ...
+    similarities = similarity_matrix.iloc[doc_index].copy()
     
     # Remove self-similarity
-    ...
+    similarities.iloc[doc_index] = -1 
     
     # Sort by similarity score (descending)
-    ...
+    sorted_similarities = list(similarities.sort_values(ascending=False).items())
     
     # Extract document indices and scores
     result = []
@@ -182,13 +224,16 @@ def get_document_keywords(
         >>> get_document_keywords(0, features, top_n=2)
         [('nlp', 0.9), ('fun', 0.5)]
     """
-    ...
+    if not isinstance(feature_matrix, pd.DataFrame):
+        raise TypeError("feature_matrix must be a pandas DataFrame")
+    if doc_index < 0 or doc_index >= len(feature_matrix):
+        raise ValueError(f"doc_index must be between 0 and {len(feature_matrix)-1}")
     
     # Get feature scores for the document
-    ...
+    feature_scores = feature_matrix.iloc[doc_index]
     
     # Sort by score (descending) and get top N
-    ...
+    top_features = feature_scores.sort_values(ascending=False).head(top_n)
     
     # Convert to list of tuples
     result = [(feature, round(score, 4)) for feature, score in top_features.items()]
@@ -218,10 +263,28 @@ def compare_vectorization_methods(
         >>> 'bow' in comparison and 'tfidf' in comparison
         True
     """
-    ...
+    if not isinstance(documents, list):
+        raise TypeError("Documents must be a list")
+    if not documents:
+        raise ValueError("Documents cannot be empty")
+    if not all(isinstance(doc, str) for doc in documents):
+        raise TypeError("All documents must be strings")
+    if len(documents) < 2:
+        raise ValueError("At least 2 documents are required")
     
     # Run analysis with both methods
-    ...
+    bow_results = analyze_documents(
+        documents,
+        use_lemmatization=True,
+        ngram_range=(1, 2),
+        vector_method="bow"
+    )
+    tfidf_results = analyze_documents(
+        documents,
+        use_lemmatization=True,
+        ngram_range=(1, 2),
+        vector_method="tfidf"
+    )
     
     return {
         "bow": bow_results['vectorization']['feature_matrix'],
